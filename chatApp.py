@@ -182,6 +182,6 @@ class ChatClient(Frame):
 
 if __name__ == "__main__":
   root = Tk()
-  ip, _ = get_working_private_ip()
+  ip = get_working_private_ip()
   app = ChatClient(root, ip)
   root.mainloop()
