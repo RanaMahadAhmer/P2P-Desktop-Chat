@@ -1,0 +1,162 @@
+name: PR Validation Checker
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  pr_commented:
+    name: Validate PR
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, 'validate') }}
+    needs: set_pending_status
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]  # macos-latest not tested due to crashing.
+        version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.version }}
+          cache: 'pip'
+      - uses: actions/cache/restore@v4
+        if: matrix.os == 'windows-latest'
+        id: restore_cache
+        with:
+          path: libsodium.dll
+          key: cache_libsodium_dll
+      - run: python -m pip install -r requirements.txt
+      - run: python run_all_tests.py -a
+        env:
+          TEST_IPV8_WITH_IPV6: 0
+      - run: python run_all_tests.py -a
+        env:
+          TEST_IPV8_WITH_IPV6: 1
+      - uses: actions/cache/save@v4
+        if: matrix.os == 'windows-latest'
+        id: save_cache
+        with:
+          path: libsodium.dll
+          key: cache_libsodium_dll
+
+  set_pending_status:
+    if: ${{github.event.issue.pull_request && startsWith(github.event.comment.body, 'validate') }}
+    runs-on: ubuntu-latest
+    outputs:
+      actual_pull_head: ${{ steps.sha_share_step.outputs.actual_pull_head }}
+    steps:
+      - name: Retrieving commit
+        shell: bash
+        run: |
+          {
+            echo 'actual_pull_head<<EOF'
+            git ls-remote ${{ github.server_url }}/${{ github.repository }}/ refs/pull/${{ github.event.issue.number }}/head | grep -o "^\w*\b"
+            echo
+            echo EOF
+          } >> "$GITHUB_ENV"
+      - name: Sharing commit SHA between jobs
+        id: sha_share_step
+        run: echo "actual_pull_head=${{ env.actual_pull_head }}" >> "$GITHUB_OUTPUT"
+      - name: Set commit pending status
+        uses: guibranco/github-status-action-v2@v1.1.13
+        with:
+          authToken: ${{secrets.COMMIT_STATUS_TOKEN}}
+          context: 'Cross-env Validation'
+          description: 'Pending..'
+          state: 'pending'
+          sha: ${{ env.actual_pull_head }}
+          target_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  set_failure_status:
+    if: ${{failure() && github.event.issue.pull_request && startsWith(github.event.comment.body, 'validate') }}
+    needs: [set_pending_status, pr_commented, validate_identity_tutorial, validate_documentation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set commit failed status
+        env:
+          actual_pull_head: ${{needs.set_pending_status.outputs.actual_pull_head}}
+        uses: guibranco/github-status-action-v2@v1.1.13
+        with:
+          authToken: ${{secrets.COMMIT_STATUS_TOKEN}}
+          context: 'Cross-env Validation'
+          description: 'Failed!'
+          state: 'failure'
+          sha: ${{ env.actual_pull_head }}
+          target_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  set_success_status:
+    if: ${{!failure() && github.event.issue.pull_request && startsWith(github.event.comment.body, 'validate') }}
+    needs: [set_pending_status, pr_commented, validate_identity_tutorial, validate_documentation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set commit success status
+        env:
+          actual_pull_head: ${{needs.set_pending_status.outputs.actual_pull_head}}
+        uses: guibranco/github-status-action-v2@v1.1.13
+        with:
+          authToken: ${{secrets.COMMIT_STATUS_TOKEN}}
+          context: 'Cross-env Validation'
+          description: 'Success!'
+          state: 'success'
+          sha: ${{ env.actual_pull_head }}
+          target_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  validate_identity_tutorial:
+    name: Validate identity tutorial
+    if: ${{github.event.issue.pull_request && startsWith(github.event.comment.body, 'validate') }}
+    needs: set_pending_status
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - name: Install dependencies
+        run: |
+          pip install --upgrade setuptools pip
+          pip install -r requirements.txt
+      - name: Run identity tests
+        run: |
+          export PYTHONPATH="$(pwd)/"
+          cd doc/basics/identity_tutorial_integration
+          python attestation_tutorial_attest.py
+          python attestation_tutorial_verify.py
+
+  validate_documentation:
+    name: Validate documentation
+    if: ${{github.event.issue.pull_request && startsWith(github.event.comment.body, 'validate') }}
+    needs: set_pending_status
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - name: Install dependencies
+        run: |
+          pip install --upgrade setuptools pip
+          pip install -r requirements.txt
+      - name: Run documentation tests
+        run: |
+          cd doc
+          if [ -f "further-reading/certfile.pem" ]
+          then
+          echo "certfile.pem found"
+          else
+          echo "generating certfile.pem"
+          cd further-reading
+          openssl req -newkey rsa:2048 -nodes -keyout private.key -x509 -days 365 -out certfile.pem -subj "/C=NL/ST=Zuid Holland/L=Delft/O=TU Delft/OU=Distributed Systems Group/CN=Tribler"
+          cat private.key >> certfile.pem
+          rm private.key
+          cd ..
+          fi
+          LD_PRELOAD=libgcc_s.so.1 python3 -X dev ./validate_examples.py
