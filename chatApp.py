@@ -3,11 +3,15 @@ import threading
 from tkinter import Tk, Frame, Text, Label, Entry, Button, Listbox, StringVar, DISABLED, NORMAL, E, W, N, S
 from tkinter import ttk
 
+from ip import get_working_private_ip
+
+
 class ChatClient(Frame):
 
-  def __init__(self, root):
+  def __init__(self, root, ipAdd):
     super().__init__(root)
     self.root = root
+    self.ipAdd = ipAdd
     self.init_ui()
     self.server_socket = None
     self.server_status = 0
@@ -27,7 +31,7 @@ class ChatClient(Frame):
 
     padx, pady = 10, 10
     parent_frame = Frame(self.root)
-    parent_frame.grid(padx=padx, pady=pady, sticky=E+W+N+S)
+    parent_frame.grid(padx=padx, pady=pady, sticky=E + W + N + S)
 
     # IP and Client setup frame
     ip_group = Frame(parent_frame)
@@ -35,10 +39,10 @@ class ChatClient(Frame):
     self.name_var = StringVar(value="SDH")
     Entry(ip_group, width=10, textvariable=self.name_var).grid(row=0, column=1)
 
-    self.server_ip_var = StringVar(value="127.0.0.1")
+    self.server_ip_var = StringVar(value=self.ipAdd)
     Entry(ip_group, width=15, textvariable=self.server_ip_var).grid(row=0, column=2)
 
-    self.server_port_var = StringVar(value="8090")
+    self.server_port_var = StringVar(value="8091")
     Entry(ip_group, width=5, textvariable=self.server_port_var).grid(row=0, column=3)
 
     Button(ip_group, text="Set", width=10, command=self.handle_set_server).grid(row=0, column=4, padx=5)
@@ -56,10 +60,10 @@ class ChatClient(Frame):
     # Chat display
     read_chat_group = Frame(parent_frame)
     self.received_chats = Text(read_chat_group, bg="white", width=60, height=30, state=DISABLED)
-    self.received_chats.grid(row=0, column=0, sticky=W+N+S, padx=(0, 10))
+    self.received_chats.grid(row=0, column=0, sticky=W + N + S, padx=(0, 10))
 
     self.friends = Listbox(read_chat_group, bg="white", width=30, height=30)
-    self.friends.grid(row=0, column=1, sticky=E+N+S)
+    self.friends.grid(row=0, column=1, sticky=E + N + S)
     read_chat_group.grid(row=1, column=0)
 
     # Chat input
@@ -72,7 +76,10 @@ class ChatClient(Frame):
     self.status_label = Label(parent_frame)
     self.status_label.grid(row=3, column=0)
 
-    Label(parent_frame, text="Created by Siddhartha under Prof. A. Prakash [Computer Networks, Dept. of CSE, BIT Mesra]").grid(row=4, column=0, pady=10)
+    Label(parent_frame,
+          text="Created by Siddhartha under Prof. A. Prakash [Computer Networks, Dept. of CSE, BIT Mesra]").grid(row=4,
+                                                                                                                 column=0,
+                                                                                                                 pady=10)
 
   def handle_set_server(self):
     if self.server_socket:
@@ -172,8 +179,9 @@ class ChatClient(Frame):
     self.status_label.config(text=message)
     print(message)
 
+
 if __name__ == "__main__":
   root = Tk()
-  app = ChatClient(root)
+  ip, _ = get_working_private_ip()
+  app = ChatClient(root, ip)
   root.mainloop()
-  
