@@ -85,12 +85,6 @@ class ChatClient(Frame):
         self.status_label = Label(parent_frame)
         self.status_label.grid(row=3, column=0)
 
-        # Label(parent_frame,
-        #       text="Created by Siddhartha under Prof. A. Prakash [Computer Networks, Dept. of CSE, BIT Mesra]").grid(
-        #     row=4,
-        #     column=0,
-        #     pady=10)
-
     def encrypt_message(self, message, recipient_public_key):
         # Compute the hash
         digest = hashes.Hash(hashes.SHA1(), backend=default_backend())
@@ -213,13 +207,7 @@ class ChatClient(Frame):
                         "-----END PUBLIC KEY-----\n"):
                     self.client_public_keys[f"{client_address[0]}:{client_address[1]}"] = message
                 else:
-
-                    print(message)
-                    print("HERE")
-
-                    print(self.decrypt_message(bytes(message, 'utf-8')))
-
-                    self.add_chat(f"{client_address[0]}:{client_address[1]}", message)
+                    self.add_chat(f"{client_address[0]}:{client_address[1]}", self.decrypt_message(eval(message)))
             except Exception as e:
                 self.set_status(f"Error receiving data: {e}")
                 break
@@ -246,10 +234,7 @@ class ChatClient(Frame):
                 pem_string = self.client_public_keys[f"{add[0]}:{add[1]}"]
                 public_key = load_pem_public_key(pem_string.encode())
                 encrypted_message = self.encrypt_message(msg, public_key)
-                print(encrypted_message)
-                # print(str(encrypted_message).encode())
-
-                client_socket.send(b64encode(encrypted_message).decode('utf-8'))
+                client_socket.send(str(encrypted_message).encode())
             except Exception as e:
                 self.set_status(f"Error sending message: {e}")
 
