@@ -129,32 +129,31 @@ class ChatClient(Frame):
     except Exception as e:
       self.set_status(f"Error connecting to client: {e}")
 
-
-def handle_client_messages(self, client_socket, client_address):
-  first_message = True
-  while True:
-    try:
-      data = client_socket.recv(self.buffer_size)
-      if not data:
-        break
-      message = data.decode()
-
-      # Validate the first message as "hello"
-      if first_message:
-        first_message = False
-        if message.lower().strip() != "hello":
-          self.set_status(f"Client {client_address[0]}:{client_address[1]} failed to send 'hello'. Disconnecting.")
+  def handle_client_messages(self, client_socket, client_address):
+    first_message = True
+    while True:
+      try:
+        data = client_socket.recv(self.buffer_size)
+        if not data:
           break
+        message = data.decode()
 
-      self.add_chat(f"{client_address[0]}:{client_address[1]}", message)
-    except Exception as e:
-      self.set_status(f"Error receiving data: {e}")
-      break
+        # Validate the first message as "hello"
+        if first_message:
+          first_message = False
+          if message.lower().strip() != "hello":
+            self.set_status(f"Client {client_address[0]}:{client_address[1]} failed to send 'hello'. Disconnecting.")
+            break
 
-  # Remove client and close connection
-  self.remove_client(client_socket, client_address)
-  client_socket.close()
-  self.set_status(f"Client disconnected from {client_address[0]}:{client_address[1]}")
+        self.add_chat(f"{client_address[0]}:{client_address[1]}", message)
+      except Exception as e:
+        self.set_status(f"Error receiving data: {e}")
+        break
+
+    # Remove client and close connection
+    self.remove_client(client_socket, client_address)
+    client_socket.close()
+    self.set_status(f"Client disconnected from {client_address[0]}:{client_address[1]}")
 
   def handle_send_chat(self):
     if self.server_status == 0:
