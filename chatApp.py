@@ -1,7 +1,5 @@
-import base64
 import socket
 import threading
-from base64 import b64encode
 from tkinter import Tk, Frame, Text, Label, Entry, Button, Listbox, StringVar, DISABLED, NORMAL, E, W, N, S
 from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat
 from ip import get_working_private_ip
@@ -20,7 +18,7 @@ class ChatClient(Frame):
         self.init_ui()
         self.server_socket = None
         self.server_status = 0
-        self.buffer_size = 2048
+        self.buffer_size = 4096
         self.all_clients = {}
         self.all_clients_add = {}
         self.counter = 0
@@ -86,49 +84,59 @@ class ChatClient(Frame):
         self.status_label.grid(row=3, column=0)
 
     def encrypt_message(self, message, recipient_public_key):
-        # Compute the hash
-        digest = hashes.Hash(hashes.SHA1(), backend=default_backend())
-        digest.update(message.encode())
-        message_hash = digest.finalize()
+        # Convert message to bytes
+        message_bytes = message.encode()
 
-        # Append the hash to the message
-        full_message = message.encode() + b"||" + message_hash
+        # Calculate maximum block size (RSA key size in bytes - padding overhead)
+        block_size = 190  # 2048 bit key = 256 bytes - padding overhead
 
-        # Encrypt using recipient's public key
-        encrypted_message = recipient_public_key.encrypt(
-            full_message,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                algorithm=hashes.SHA1(),
-                label=None
+        # Split message into blocks
+        blocks = [message_bytes[i:i + block_size] for i in range(0, len(message_bytes), block_size)]
+
+        # Encrypt each block
+        encrypted_blocks = []
+        for block in blocks:
+            # Add length prefix to distinguish final block
+            block_with_length = len(block).to_bytes(2, 'big') + block
+
+            # Encrypt block with RSA
+            encrypted_block = recipient_public_key.encrypt(
+                block_with_length,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                    algorithm=hashes.SHA1(),
+                    label=None
+                )
             )
-        )
-        return encrypted_message
+            encrypted_blocks.append(encrypted_block)
+
+        # Combine all blocks into a single bytes object
+        return b''.join(encrypted_blocks)
 
     def decrypt_message(self, encrypted_message):
-        # Decrypt using own private key
-        decrypted_message = self.private_key.decrypt(
-            encrypted_message,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                algorithm=hashes.SHA1(),
-                label=None
+        # Split into blocks (RSA block size for 2048-bit key is 256 bytes)
+        block_size = 256
+        encrypted_blocks = [encrypted_message[i:i + block_size] for i in range(0, len(encrypted_message), block_size)]
+
+        # Decrypt each block
+        decrypted_blocks = []
+        for block in encrypted_blocks:
+            # Decrypt block
+            decrypted_block = self.private_key.decrypt(
+                block,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                    algorithm=hashes.SHA1(),
+                    label=None
+                )
             )
-        )
 
-        # Split the message and the hash
-        message, received_hash = decrypted_message.rsplit(b"||", 1)
+            # Extract length and data
+            length = int.from_bytes(decrypted_block[:2], 'big')
+            decrypted_blocks.append(decrypted_block[2:2 + length])
 
-        # Recalculate the hash of the message
-        digest = hashes.Hash(hashes.SHA1(), backend=default_backend())
-        digest.update(message)
-        calculated_hash = digest.finalize()
-
-        # Verify integrity
-        if calculated_hash != received_hash:
-            raise ValueError("Message integrity compromised!")
-
-        return message.decode()
+        # Combine all blocks and convert to string
+        return b''.join(decrypted_blocks).decode()
 
     def handle_set_server(self):
         if self.server_socket:
@@ -196,7 +204,6 @@ class ChatClient(Frame):
             self.set_status(f"Error connecting to client: {e}")
 
     def handle_client_messages(self, client_socket, client_address):
-
         while True:
             try:
                 data = client_socket.recv(self.buffer_size)
